@@ -1,0 +1,328 @@
+import sqlite3
+from datetime import datetime, date
+import hashlib
+
+DB_SAVE_PATH = "user_private_study_db.db"
+
+
+def init_full_study_database():
+    try:
+        conn = sqlite3.connect(DB_SAVE_PATH)
+        cur = conn.cursor()
+
+        cur.execute('''
+        CREATE TABLE IF NOT EXISTS user_accounts (
+            uid INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            email TEXT,
+            register_time TEXT NOT NULL,
+            last_login_time TEXT,
+            is_active INTEGER DEFAULT 1
+        )
+        ''')
+
+        cur.execute('''
+        CREATE TABLE IF NOT EXISTS user_total_info (
+            uid INTEGER PRIMARY KEY,
+            total_valid_study_min INTEGER DEFAULT 0,
+            total_finish_question INTEGER DEFAULT 0,
+            total_wrong_question INTEGER DEFAULT 0,
+            last_learn_date TEXT,
+            default_daily_target_min INTEGER DEFAULT 60,
+            FOREIGN KEY(uid) REFERENCES user_accounts(uid) ON DELETE CASCADE
+        )
+        ''')
+
+        cur.execute('''
+        CREATE TABLE IF NOT EXISTS all_wrong_records (
+            wid INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            question_text TEXT NOT NULL,
+            user_wrong_answer TEXT,
+            belong_language_tag TEXT NOT NULL,
+            belong_knowledge_point TEXT NOT NULL,
+            wrong_total_times INTEGER DEFAULT 1,
+            first_wrong_time TEXT NOT NULL,
+            latest_wrong_time TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES user_accounts(uid) ON DELETE CASCADE
+        )
+        ''')
+
+        cur.execute('''
+        CREATE TABLE IF NOT EXISTS daily_study_record (
+            rid INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            record_date TEXT NOT NULL,
+            day_valid_min INTEGER DEFAULT 0,
+            day_idle_min INTEGER DEFAULT 0,
+            day_finish_ques INTEGER DEFAULT 0,
+            UNIQUE(user_id, record_date),
+            FOREIGN KEY(user_id) REFERENCES user_accounts(uid) ON DELETE CASCADE
+        )
+        ''')
+
+        cur.execute("SELECT COUNT(*) FROM user_accounts")
+        if cur.fetchone()[0] == 0:
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cur.execute('''INSERT INTO user_accounts(username, password_hash, register_time) 
+                          VALUES(?,?,?)''', ('default_user', hash_password('123456'), current_time))
+            cur.execute("INSERT INTO user_total_info(uid) VALUES(1)")
+
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"数据库初始化失败: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+
+def hash_password(password):
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+
+def register_user(username, password, email=None):
+    init_full_study_database()
+    conn = sqlite3.connect(DB_SAVE_PATH)
+    cur = conn.cursor()
+
+    try:
+        cur.execute("SELECT uid FROM user_accounts WHERE username = ?", (username,))
+        if cur.fetchone():
+            return {"success": False, "message": "用户名已存在"}
+
+        password_hash = hash_password(password)
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        cur.execute('''INSERT INTO user_accounts(username, password_hash, email, register_time) 
+                      VALUES(?,?,?,?)''', (username, password_hash, email, current_time))
+
+        new_user_id = cur.lastrowid
+
+        cur.execute('''INSERT INTO user_total_info(uid, total_valid_study_min, total_finish_question, 
+                      total_wrong_question, last_learn_date, default_daily_target_min) 
+                      VALUES(?,0,0,0,?,60)''', (new_user_id, current_time))
+
+        conn.commit()
+        return {"success": True, "user_id": new_user_id, "message": "注册成功"}
+    except Exception as e:
+        conn.rollback()
+        return {"success": False, "message": f"注册失败: {str(e)}"}
+    finally:
+        cur.close()
+        conn.close()
+
+
+def login_user(username, password):
+    init_full_study_database()
+    conn = sqlite3.connect(DB_SAVE_PATH)
+    cur = conn.cursor()
+
+    try:
+        password_hash = hash_password(password)
+        cur.execute('''SELECT uid, username, is_active FROM user_accounts 
+                      WHERE username = ? AND password_hash = ?''', (username, password_hash))
+
+        user = cur.fetchone()
+
+        if not user:
+            return {"success": False, "message": "用户名或密码错误"}
+
+        user_id, username, is_active = user
+
+        if not is_active:
+            return {"success": False, "message": "账号已被禁用"}
+
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cur.execute("UPDATE user_accounts SET last_login_time = ? WHERE uid = ?",
+                    (current_time, user_id))
+        conn.commit()
+
+        return {"success": True, "user_id": user_id, "username": username, "message": "登录成功"}
+    except Exception as e:
+        return {"success": False, "message": f"登录失败: {str(e)}"}
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_user_info(user_id):
+    conn = sqlite3.connect(DB_SAVE_PATH)
+    cur = conn.cursor()
+
+    try:
+        cur.execute('''SELECT uid, username, email, register_time, last_login_time 
+                      FROM user_accounts WHERE uid = ?''', (user_id,))
+        user = cur.fetchone()
+
+        if user:
+            return {
+                "uid": user[0],
+                "username": user[1],
+                "email": user[2],
+                "register_time": user[3],
+                "last_login_time": user[4]
+            }
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def sync_daily_study_data(user_id, valid_min, idle_min, finish_ques_num):
+    today_now = date.today().strftime("%Y-%m-%d")
+    conn = sqlite3.connect(DB_SAVE_PATH)
+    cur = conn.cursor()
+
+    try:
+        cur.execute("SELECT rid FROM daily_study_record WHERE record_date = ? AND user_id = ?",
+                    (today_now, user_id))
+        exist_data = cur.fetchone()
+
+        if exist_data:
+            cur.execute('''UPDATE daily_study_record 
+                          SET day_valid_min=day_valid_min+?, day_idle_min=day_idle_min+?, 
+                              day_finish_ques=day_finish_ques+? 
+                          WHERE record_date=? AND user_id=?''',
+                        (valid_min, idle_min, finish_ques_num, today_now, user_id))
+        else:
+            cur.execute('''INSERT INTO daily_study_record(user_id, record_date, day_valid_min, 
+                          day_idle_min, day_finish_ques) VALUES(?,?,?,?,?)''',
+                        (user_id, today_now, valid_min, idle_min, finish_ques_num))
+
+        cur.execute('''UPDATE user_total_info 
+                      SET total_valid_study_min=total_valid_study_min+?, last_learn_date=? 
+                      WHERE uid=?''', (valid_min, today_now, user_id))
+
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+
+def auto_save_wrong_item(user_id, ques_content, user_wrong_ans, lang_type, know_point):
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = sqlite3.connect(DB_SAVE_PATH)
+    cur = conn.cursor()
+
+    try:
+        cur.execute('''SELECT wid, wrong_total_times FROM all_wrong_records 
+                      WHERE question_text=? AND belong_language_tag=? 
+                      AND belong_knowledge_point=? AND user_id=?''',
+                    (ques_content, lang_type, know_point, user_id))
+
+        repeat_wrong = cur.fetchone()
+
+        if repeat_wrong:
+            w_id, old_count = repeat_wrong
+            cur.execute('''UPDATE all_wrong_records 
+                          SET wrong_total_times=?, latest_wrong_time=?, user_wrong_answer=? 
+                          WHERE wid=?''',
+                        (old_count + 1, current_time, user_wrong_ans, w_id))
+        else:
+            cur.execute('''INSERT INTO all_wrong_records(user_id, question_text, user_wrong_answer, 
+                          belong_language_tag, belong_knowledge_point, wrong_total_times, 
+                          first_wrong_time, latest_wrong_time)
+                          VALUES(?,?,?,?,?,?,?,?)''',
+                        (user_id, ques_content, user_wrong_ans, lang_type, know_point, 1,
+                         current_time, current_time))
+
+        cur.execute("UPDATE user_total_info SET total_wrong_question=total_wrong_question+1 WHERE uid=?",
+                    (user_id,))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_private_custom_study_plan(user_id):
+    init_full_study_database()
+    conn = sqlite3.connect(DB_SAVE_PATH)
+    cur = conn.cursor()
+
+    try:
+        cur.execute('''SELECT total_valid_study_min, total_finish_question, 
+                      total_wrong_question, default_daily_target_min 
+                      FROM user_total_info WHERE uid=?''', (user_id,))
+        total_data = cur.fetchone()
+
+        if not total_data:
+            return "未找到用户学习数据"
+
+        total_all_min, total_done_ques, total_wrong_ques, daily_base_target = total_data
+
+        cur.execute('''SELECT day_valid_min FROM daily_study_record 
+                      WHERE user_id=? ORDER BY record_date DESC LIMIT 7''', (user_id,))
+        week_study_list = [i[0] for i in cur.fetchall()]
+
+        cur.execute('''SELECT belong_knowledge_point, wrong_total_times 
+                      FROM all_wrong_records 
+                      WHERE user_id=? 
+                      GROUP BY belong_knowledge_point 
+                      ORDER BY wrong_total_times DESC LIMIT 5''', (user_id,))
+        weak_knowledge_rank = cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+
+    avg_week_min = sum(week_study_list) / len(week_study_list) if week_study_list else 30
+    total_all_ques = total_done_ques + total_wrong_ques
+    correct_rate = total_done_ques / total_all_ques if total_all_ques != 0 else 1.0
+
+    plan_head = "🔖 您专属个性化编程语言智能定制每日学习计划表"
+    time_config = []
+    wrong_review_task = []
+    new_learn_arrange = []
+    remind_tips = []
+
+    if avg_week_min < 20:
+        today_set_min = 30
+        time_config.append(
+            f'适配碎片化低学习频次习惯 今日保底有效专注学习总时长固定{today_set_min}分钟，拆分2段15分钟分段打卡学习')
+        remind_tips.append('学情提醒：您日常学习时长偏少，系统自动降低入门门槛，优先养成稳定每日学习打卡习惯')
+    elif 20 <= avg_week_min < 60:
+        today_set_min = daily_base_target
+        time_config.append(
+            f'贴合您日常稳定学习节奏 今日标准专属学习时长{today_set_min}分钟，推荐晚间整块无干扰固定时段集中深耕')
+    else:
+        today_set_min = daily_base_target + 20
+        time_config.append(
+            f'匹配高强度深耕学习习惯 今日进阶专属学习时长{today_set_min}分钟，预留充足错题复盘实战拓展空间')
+
+    if not weak_knowledge_rank:
+        wrong_review_task.append('暂无积累错题知识盲区，今日无强制复盘任务，可自由拓展任意感兴趣编程语言语法内容')
+    else:
+        for idx, (know_name, wrong_freq) in enumerate(weak_knowledge_rank, 1):
+            wrong_review_task.append(
+                f'【今日最高优先级必复盘{idx}】{know_name} 累计答错{wrong_freq}次 今日优先重做对应全部关联错题吃透避坑')
+
+    if correct_rate < 0.6:
+        new_learn_arrange.append(
+            f'整体答题正确率不足60% 今日70%全部时长专攻错题查漏补缺复盘巩固，仅30%时长夯实已掌握基础语法，暂缓全新高阶知识点学习')
+    elif 0.6 <= correct_rate < 0.85:
+        new_learn_arrange.append(
+            f'知识点掌握状态平稳均衡 今日学习时长五五均分，一半时间攻克薄弱错题盲区，一半时间循序渐进学习配套新语法刷题实操')
+    else:
+        new_learn_arrange.append(
+            f'语法掌握扎实答题正确率优异 今日仅30%时长快速复盘易错点防遗忘，70%时长全力推进高阶语法实战案例专项实操训练')
+
+    final_full_plan = f"""
+===================={plan_head}====================
+📅 今日规划有效专注学习总时长：{today_set_min}分钟
+⏰ 专属适配时间执行方案：
+{chr(10).join(time_config)}
+
+⚠️ 今日强制优先级错题薄弱专项复盘清单：
+{chr(10).join(wrong_review_task)}
+
+📚 定制化新知识学习刷题配比安排：
+{chr(10).join(new_learn_arrange)}
+
+💡 专属学情智能优化提醒：
+{chr(10).join(remind_tips)}
+====================================================
+累计全周期有效学习总时长：{round(total_all_min / 60, 1)}小时 整体答题正确率：{round(correct_rate * 100, 1)}%
+    """
+    return final_full_plan
