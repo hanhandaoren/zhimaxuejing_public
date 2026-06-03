@@ -1,0 +1,1999 @@
+# ============================================================================
+# 编程学习系统 - 主程序文件
+# 功能：提供完整的图形化编程学习界面，包括用户登录、课程学习、打卡日历等
+# 技术栈：PyQt5 + SQLite + JSON
+# ============================================================================
+
+# ==================== 第一部分：导入依赖库 ====================
+import sys
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
+from PyQt5.QtWidgets import *
+from datetime import datetime, date, timedelta
+import json
+import os
+from houtai_test import register_user, login_user, get_user_info
+
+
+# ==================== 第二部分：登录注册对话框类 ====================
+class LoginDialog(QDialog):
+    """
+    登录注册对话框类
+    功能：提供用户登录和注册界面，验证用户身份
+    继承自：QDialog（模态对话框）
+    """
+
+    def __init__(self):
+        """初始化登录对话框"""
+        super().__init__()
+        self.setWindowTitle("用户登录 - 编程学习系统")
+        self.setFixedSize(450, 380)
+        self.setModal(True)
+
+        # 定义配色方案 - 自然色系
+        self.NATURE_RED = "#C85A54"
+        self.NATURE_CYAN = "#4DBBD5"
+        self.NATURE_GREEN = "#00A087"
+        self.NATURE_BLUE = "#3C5488"
+        self.NATURE_ORANGE = "#D4906B"
+        self.BG_LIGHT = "#E0F6FF"
+        self.TEXT_PRIMARY = "#1a3a52"
+
+        # 用户信息变量
+        self.user_id = None
+        self.username = None
+
+        self.initUI()
+
+    def initUI(self):
+        """初始化用户界面 - 创建登录表单和按钮"""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(15)
+        layout.setContentsMargins(30, 30, 30, 30)
+
+        # --- 标题区域 ---
+        title_label = QLabel("🎓 编程学习系统")
+        title_label.setFont(QFont("Microsoft YaHei", 18, QFont.Bold))
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet(f"""
+            QLabel {{
+                color: {self.NATURE_BLUE};
+                padding: 10px;
+            }}
+        """)
+        layout.addWidget(title_label)
+
+        subtitle_label = QLabel("请登录您的账号")
+        subtitle_label.setFont(QFont("Microsoft YaHei", 11))
+        subtitle_label.setAlignment(Qt.AlignCenter)
+        subtitle_label.setStyleSheet(f"color: {self.TEXT_PRIMARY};")
+        layout.addWidget(subtitle_label)
+
+        # --- 表单区域 ---
+        form_widget = QWidget()
+        form_layout = QVBoxLayout(form_widget)
+        form_layout.setSpacing(12)
+
+        # 用户名输入框
+        username_label = QLabel("用户名:")
+        username_label.setFont(QFont("Microsoft YaHei", 10))
+        username_label.setStyleSheet(f"color: {self.TEXT_PRIMARY};")
+        form_layout.addWidget(username_label)
+
+        self.username_input = QLineEdit()
+        self.username_input.setFont(QFont("Microsoft YaHei", 11))
+        self.username_input.setPlaceholderText("请输入用户名")
+        self.username_input.setStyleSheet(f"""
+            QLineEdit {{
+                padding: 10px;
+                border: 2px solid {self.NATURE_CYAN};
+                border-radius: 6px;
+                background-color: {self.BG_LIGHT};
+                color: {self.TEXT_PRIMARY};
+            }}
+            QLineEdit:focus {{
+                border-color: {self.NATURE_BLUE};
+            }}
+        """)
+        form_layout.addWidget(self.username_input)
+
+        # 密码输入框
+        password_label = QLabel("密码:")
+        password_label.setFont(QFont("Microsoft YaHei", 10))
+        password_label.setStyleSheet(f"color: {self.TEXT_PRIMARY};")
+        form_layout.addWidget(password_label)
+
+        self.password_input = QLineEdit()
+        self.password_input.setFont(QFont("Microsoft YaHei", 11))
+        self.password_input.setPlaceholderText("请输入密码")
+        self.password_input.setEchoMode(QLineEdit.Password)
+        self.password_input.setStyleSheet(f"""
+            QLineEdit {{
+                padding: 10px;
+                border: 2px solid {self.NATURE_CYAN};
+                border-radius: 6px;
+                background-color: {self.BG_LIGHT};
+                color: {self.TEXT_PRIMARY};
+            }}
+            QLineEdit:focus {{
+                border-color: {self.NATURE_BLUE};
+            }}
+        """)
+        self.password_input.returnPressed.connect(self.handle_login)
+        form_layout.addWidget(self.password_input)
+
+        layout.addWidget(form_widget)
+
+        # --- 按钮区域 ---
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+
+        self.login_btn = QPushButton("登录")
+        self.register_btn = QPushButton("注册")
+
+        for btn in [self.login_btn, self.register_btn]:
+            btn.setFont(QFont("Microsoft YaHei", 11))
+            btn.setFixedHeight(40)
+
+        self.login_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.NATURE_GREEN};
+                color: #FFFFFF;
+                border: none;
+                border-radius: 6px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: #00C4A7;
+            }}
+        """)
+
+        self.register_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.NATURE_ORANGE};
+                color: #FFFFFF;
+                border: none;
+                border-radius: 6px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: #E4A07B;
+            }}
+        """)
+
+        self.login_btn.clicked.connect(self.handle_login)
+        self.register_btn.clicked.connect(self.handle_register)
+
+        btn_layout.addWidget(self.login_btn)
+        btn_layout.addWidget(self.register_btn)
+
+        layout.addLayout(btn_layout)
+
+        # --- 提示信息 ---
+        hint_label = QLabel("💡 提示：首次使用请点击\"注册\"按钮创建新账号\n默认测试账号: default_user / 123456")
+        hint_label.setFont(QFont("Microsoft YaHei", 9))
+        hint_label.setAlignment(Qt.AlignCenter)
+        hint_label.setStyleSheet(f"color: {self.NATURE_BLUE}; padding: 5px;")
+        hint_label.setWordWrap(True)
+        layout.addWidget(hint_label)
+
+        self.message_label = QLabel("")
+        self.message_label.setFont(QFont("Microsoft YaHei", 9))
+        self.message_label.setAlignment(Qt.AlignCenter)
+        self.message_label.setStyleSheet("color: red; min-height: 20px;")
+        layout.addWidget(self.message_label)
+
+    def handle_login(self):
+        """处理用户登录请求"""
+        try:
+            username = self.username_input.text().strip()
+            password = self.password_input.text().strip()
+
+            if not username or not password:
+                self.message_label.setText("❌ 用户名和密码不能为空")
+                return
+
+            result = login_user(username, password)
+
+            if result["success"]:
+                self.user_id = result["user_id"]
+                self.username = result["username"]
+                self.accept()
+            else:
+                self.message_label.setText(f"❌ {result['message']}")
+        except Exception as e:
+            self.message_label.setText(f"❌ 登录异常: {str(e)}")
+            print(f"登录错误详情: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def handle_register(self):
+        """处理用户注册请求"""
+        try:
+            username = self.username_input.text().strip()
+            password = self.password_input.text().strip()
+
+            if not username or not password:
+                self.message_label.setText("❌ 用户名和密码不能为空")
+                return
+
+            if len(username) < 3:
+                self.message_label.setText("❌ 用户名长度至少3位")
+                return
+
+            if len(password) < 6:
+                self.message_label.setText("❌ 密码长度至少6位")
+                return
+
+            result = register_user(username, password)
+
+            if result["success"]:
+                QMessageBox.information(self, "注册成功",
+                                        f"✅ 注册成功！\n用户名: {username}\n\n即将自动登录")
+                self.user_id = result["user_id"]
+                self.username = username
+                self.accept()
+            else:
+                self.message_label.setText(f"❌ {result['message']}")
+        except Exception as e:
+            self.message_label.setText(f"❌ 注册异常: {str(e)}")
+            print(f"注册错误详情: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def get_user_info(self):
+        """获取当前登录用户的信息"""
+        return self.user_id, self.username
+
+
+# ==================== 第三部分：主学习窗口类 ====================
+class CodeLearnWindow(QMainWindow):
+    """
+    编程学习主窗口类
+    功能：提供课程学习、打卡日历、货币系统等完整功能
+    继承自：QMainWindow（主窗口）
+    """
+
+    def __init__(self, user_id=None, username=None):
+        """
+        初始化主窗口
+        参数：
+            user_id: 当前用户ID
+            username: 当前用户名
+        """
+        super().__init__()
+        self.current_user_id = user_id
+        self.current_username = username
+        self.setWindowTitle(f"编译语言学习软件 - C / Python 编程学习 | 用户: {username if username else '未登录'}")
+        self.setMinimumSize(1400, 900)
+
+        # 定义配色方案
+        self.NATURE_RED = "#C85A54"
+        self.NATURE_CYAN = "#4DBBD5"
+        self.NATURE_GREEN = "#00A087"
+        self.NATURE_BLUE = "#3C5488"
+        self.NATURE_ORANGE = "#D4906B"
+        self.NATURE_PURPLE = "#8491B4"
+
+        self.BG_DARK = "#87CEEB"
+        self.BG_MEDIUM = "#B0E0E6"
+        self.BG_LIGHT = "#E0F6FF"
+        self.TEXT_PRIMARY = "#1a3a52"
+        self.TEXT_SECONDARY = "#2c5f7d"
+        self.BORDER_COLOR = "#5FB8D9"
+
+        # --- 数据文件路径 ---
+        self.checkin_file = "checkin_data.json"
+        self.checkin_data = self.load_checkin_data()
+
+        self.currency_file = "currency_data.json"
+        self.currency_data = self.load_currency_data()
+
+        self.progress_file = "learning_progress.json"
+        self.learning_progress = self.load_learning_progress()
+
+        # 当前年月（用于日历显示）
+        today = date.today()
+        self._current_year = today.year
+        self._current_month = today.month
+
+        # 当前选中的课程和关卡
+        self.current_course = None
+        self.current_level = 1
+
+        # 关卡类型定义（每门课程7个关卡）
+        self.level_types = [
+            "代码介绍",
+            "实战填空 1",
+            "实战填空 2",
+            "实战填空 3",
+            "实战填空 4",
+            "程序实战 1",
+            "程序实战 2"
+        ]
+
+        self.initUI()
+
+    # ==================== 第四部分：数据加载和保存方法 ====================
+
+    def load_checkin_data(self):
+        """从JSON文件加载打卡数据"""
+        if os.path.exists(self.checkin_file):
+            try:
+                with open(self.checkin_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except:
+                return {}
+        return {}
+
+    def save_checkin_data(self):
+        """将打卡数据保存到JSON文件"""
+        try:
+            with open(self.checkin_file, 'w', encoding='utf-8') as f:
+                json.dump(self.checkin_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"保存打卡数据失败: {e}")
+
+    def load_currency_data(self):
+        """从JSON文件加载货币数据 - 按用户ID隔离"""
+        default_data = {'copper': 0, 'silver': 0, 'gold': 0}
+        
+        if os.path.exists(self.currency_file):
+            try:
+                with open(self.currency_file, 'r', encoding='utf-8') as f:
+                    all_data = json.load(f)
+                    # 按用户ID获取数据，如果不存在则返回默认值
+                    user_id_str = str(self.current_user_id)
+                    if user_id_str in all_data:
+                        user_data = all_data[user_id_str]
+                        # 确保数据完整性
+                        if 'copper' not in user_data:
+                            user_data['copper'] = 0
+                        if 'silver' not in user_data:
+                            user_data['silver'] = 0
+                        if 'gold' not in user_data:
+                            user_data['gold'] = 0
+                        return user_data
+                    return default_data.copy()
+            except:
+                return default_data.copy()
+        return default_data.copy()
+
+    def save_currency_data(self):
+        """将货币数据保存到JSON文件 - 按用户ID隔离"""
+        try:
+            # 先读取所有用户的数据
+            all_data = {}
+            if os.path.exists(self.currency_file):
+                with open(self.currency_file, 'r', encoding='utf-8') as f:
+                    all_data = json.load(f)
+            
+            # 保存当前用户的数据
+            user_id_str = str(self.current_user_id)
+            all_data[user_id_str] = self.currency_data
+            
+            # 写入文件
+            with open(self.currency_file, 'w', encoding='utf-8') as f:
+                json.dump(all_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"保存货币数据失败: {e}")
+
+    def load_learning_progress(self):
+        """从JSON文件加载学习进度数据"""
+        if os.path.exists(self.progress_file):
+            try:
+                with open(self.progress_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except:
+                return {}
+        return {}
+
+    def save_learning_progress(self):
+        """将学习进度数据保存到JSON文件"""
+        try:
+            with open(self.progress_file, 'w', encoding='utf-8') as f:
+                json.dump(self.learning_progress, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"保存学习进度失败: {e}")
+
+    # ==================== 第五部分：学习进度管理方法 ====================
+
+    def complete_level(self, course_name, level_num):
+        """
+        标记关卡为已完成
+        功能：记录学习进度，奖励铜币，同步到数据库
+        参数：
+            course_name: 课程名称
+            level_num: 关卡编号（1-7）
+        返回：True表示新完成，False表示已存在
+        """
+        if course_name not in self.learning_progress:
+            self.learning_progress[course_name] = []
+
+        if level_num not in self.learning_progress[course_name]:
+            self.learning_progress[course_name].append(level_num)
+            self.learning_progress[course_name].sort()
+            self.save_learning_progress()
+
+            self.add_copper(5)
+
+            from houtai_test import sync_daily_study_data
+            sync_daily_study_data(self.current_user_id, 0, 0, 1)
+
+            return True
+        return False
+
+    def is_level_completed(self, course_name, level_num):
+        """检查指定关卡是否已完成"""
+        if course_name in self.learning_progress:
+            return level_num in self.learning_progress[course_name]
+        return False
+
+    def is_course_completed(self, course_name):
+        """检查课程是否全部完成（7个关卡都完成）"""
+        if course_name in self.learning_progress:
+            return len(self.learning_progress[course_name]) >= 7
+        return False
+
+    # ==================== 第六部分：货币系统方法 ====================
+
+    def add_copper(self, amount):
+        """
+        添加铜币并自动兑换成银币和金币
+        兑换规则：100铜币=1银币，100银币=1金币
+        参数：
+            amount: 要添加的铜币数量
+        """
+        self.currency_data['copper'] += amount
+
+        while self.currency_data['copper'] >= 100:
+            self.currency_data['copper'] -= 100
+            self.currency_data['silver'] += 1
+
+        while self.currency_data['silver'] >= 100:
+            self.currency_data['silver'] -= 100
+            self.currency_data['gold'] += 1
+
+        self.save_currency_data()
+        self.update_currency_display()
+
+    # ==================== 第七部分：打卡记录管理方法 ====================
+
+    def remove_checkin_record(self, date_str):
+        """
+        删除指定日期的打卡记录，并奖励铜币
+        参数：
+            date_str: 日期字符串（格式：YYYY-MM-DD）
+        返回：True表示删除成功，False表示记录不存在
+        """
+        if date_str in self.checkin_data:
+            del self.checkin_data[date_str]
+            self.save_checkin_data()
+            self.add_copper(10)
+            return True
+        return False
+
+    def remove_week_checkins(self):
+        """删除最近一周的打卡记录，并奖励银币"""
+        today = date.today()
+        deleted_count = 0
+        dates_to_delete = []
+
+        for i in range(7):
+            check_date = today - timedelta(days=i)
+            date_str = check_date.strftime("%Y-%m-%d")
+            if date_str in self.checkin_data:
+                dates_to_delete.append(date_str)
+
+        for date_str in dates_to_delete:
+            del self.checkin_data[date_str]
+            deleted_count += 1
+
+        if deleted_count > 0:
+            self.save_checkin_data()
+            self.add_copper(deleted_count * 10 + (100 - deleted_count * 10))
+
+        return deleted_count
+
+    def remove_month_checkins(self):
+        """删除最近一个月的打卡记录，并奖励金币"""
+        today = date.today()
+        deleted_count = 0
+        dates_to_delete = []
+
+        for i in range(30):
+            check_date = today - timedelta(days=i)
+            date_str = check_date.strftime("%Y-%m-%d")
+            if date_str in self.checkin_data:
+                dates_to_delete.append(date_str)
+
+        for date_str in dates_to_delete:
+            del self.checkin_data[date_str]
+            deleted_count += 1
+
+        if deleted_count > 0:
+            self.save_checkin_data()
+            self.add_copper(deleted_count * 10 + (1000 - deleted_count * 10))
+
+        return deleted_count
+
+    # ==================== 第八部分：界面初始化方法 ====================
+
+    def initUI(self):
+        """初始化主窗口界面 - 创建所有UI组件"""
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # --- 顶部用户信息栏 ---
+        user_bar = QWidget()
+        user_bar.setFixedHeight(50)
+        user_bar.setStyleSheet(f"""
+            QWidget {{
+                background-color: {self.NATURE_BLUE};
+                border-bottom: 2px solid {self.NATURE_CYAN};
+            }}
+        """)
+        user_bar_layout = QHBoxLayout(user_bar)
+        user_bar_layout.setContentsMargins(15, 5, 15, 5)
+
+        user_info_label = QLabel(f"👤 当前用户: {self.current_username} (ID: {self.current_user_id})")
+        user_info_label.setFont(QFont("Microsoft YaHei", 11))
+        user_info_label.setStyleSheet("color: #FFFFFF; font-weight: bold;")
+        user_bar_layout.addWidget(user_info_label)
+
+        user_bar_layout.addStretch()
+
+        logout_btn = QPushButton("🚪 切换账号")
+        logout_btn.setFont(QFont("Microsoft YaHei", 10))
+        logout_btn.setFixedHeight(35)
+        logout_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.NATURE_RED};
+                color: #FFFFFF;
+                padding: 5px 15px;
+                border: none;
+                border-radius: 4px;
+            }}
+            QPushButton:hover {{
+                background-color: #D47A74;
+            }}
+        """)
+        logout_btn.clicked.connect(self.switch_account)
+        user_bar_layout.addWidget(logout_btn)
+
+        main_layout.addWidget(user_bar)
+
+        # --- 主内容区域 ---
+        content_widget = QWidget()
+        content_layout = QHBoxLayout(content_widget)
+        content_layout.setContentsMargins(10, 10, 10, 10)
+        content_layout.setSpacing(10)
+
+        content_widget.setStyleSheet(f"""
+            QWidget {{
+                background-color: {self.BG_DARK};
+            }}
+        """)
+
+        # 左侧：课程列表面板
+        self.left_widget = QWidget()
+        self.left_widget.setMaximumWidth(280)
+        left_layout = QVBoxLayout(self.left_widget)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(10)
+
+        title_label = QLabel("📚 编程课程目录")
+        title_label.setFont(QFont("Microsoft YaHei", 13, QFont.Bold))
+        title_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {self.NATURE_BLUE};
+                color: #FFFFFF;
+                padding: 15px;
+                border-radius: 8px;
+                border-left: 4px solid {self.NATURE_RED};
+            }}
+        """)
+        left_layout.addWidget(title_label)
+
+        self.course_list = QListWidget()
+        self.course_list.setFont(QFont("Microsoft YaHei", 10))
+        self.course_list.setStyleSheet(f"""
+            QListWidget {{
+                background-color: {self.BG_MEDIUM};
+                border: none;
+                border-radius: 8px;
+                padding: 5px;
+                color: {self.TEXT_PRIMARY};
+            }}
+            QListWidget::item {{
+                padding: 12px;
+                border-bottom: 1px solid {self.BORDER_COLOR};
+                border-radius: 4px;
+            }}
+            QListWidget::item:selected {{
+                background-color: {self.NATURE_CYAN};
+                color: #FFFFFF;
+            }}
+            QListWidget::item:hover {{
+                background-color: {self.BG_LIGHT};
+            }}
+        """)
+
+        courses = [
+            "Python 基础语法",
+            "Python 变量与数据类型",
+            "Python 条件语句 if",
+            "Python 循环 for / while",
+            "C 语言 Hello World",
+            "C 语言 变量与输入输出",
+            "C 语言 函数定义",
+            "C 语言 数组与指针",
+            "编译与运行基础",
+            "实战小项目：计算器"
+        ]
+        self.course_list.addItems(courses)
+        left_layout.addWidget(self.course_list)
+
+        func_layout = QHBoxLayout()
+        func_layout.setSpacing(10)
+
+        self.btn_course = QPushButton("📘 课程")
+        self.btn_calendar = QPushButton("📅 日历")
+
+        for btn in [self.btn_course, self.btn_calendar]:
+            btn.setFont(QFont("Microsoft YaHei", 10))
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {self.BG_MEDIUM};
+                    color: {self.TEXT_PRIMARY};
+                    padding: 10px;
+                    border: none;
+                    border-radius: 6px;
+                }}
+                QPushButton:hover {{
+                    background-color: {self.NATURE_CYAN};
+                    color: #FFFFFF;
+                }}
+                QPushButton:checked {{
+                    background-color: {self.NATURE_RED};
+                    color: #FFFFFF;
+                    font-weight: bold;
+                }}
+            """)
+            btn.setCheckable(True)
+            func_layout.addWidget(btn)
+
+        self.btn_course.setChecked(True)
+        left_layout.addLayout(func_layout)
+
+        # 右侧：学习内容面板
+        self.right_widget = QWidget()
+        self.right_layout = QVBoxLayout(self.right_widget)
+        self.right_layout.setContentsMargins(0, 0, 0, 0)
+        self.right_layout.setSpacing(0)
+
+        self.create_course_interface()
+        self.create_calendar_interface()
+        self.calendar_widget.setVisible(False)
+
+        content_layout.addWidget(self.left_widget)
+        content_layout.addWidget(self.right_widget, stretch=1)
+
+        main_layout.addWidget(content_widget, stretch=1)
+
+        # --- 绑定事件信号 ---
+        self.run_btn.clicked.connect(self.run_code)
+        self.submit_btn.clicked.connect(self.submit_answer)
+        self.next_level_btn.clicked.connect(self.next_level)
+        self.prev_level_btn.clicked.connect(self.prev_level)
+        self.course_list.itemClicked.connect(self.on_course_selected)
+        self.btn_course.clicked.connect(lambda: self.switch_view('course'))
+        self.btn_calendar.clicked.connect(lambda: self.switch_view('calendar'))
+        self.checkin_btn.clicked.connect(self.do_checkin)
+
+        self.update_calendar()
+        self.update_checkin_stats()
+        self.update_course_list_display()
+
+    # ==================== 第九部分：课程学习界面创建 ====================
+
+    def create_course_interface(self):
+        """创建课程学习界面 - 包含代码编辑器、运行按钮等"""
+        self.course_widget = QWidget()
+        course_layout = QVBoxLayout(self.course_widget)
+        course_layout.setContentsMargins(10, 10, 10, 10)
+        course_layout.setSpacing(10)
+
+        # 顶部：关卡导航按钮
+        level_nav_widget = QWidget()
+        level_nav_layout = QHBoxLayout(level_nav_widget)
+        level_nav_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.prev_level_btn = QPushButton("◀ 上一关")
+        self.next_level_btn = QPushButton("下一关 ▶")
+
+        for btn in [self.prev_level_btn, self.next_level_btn]:
+            btn.setFont(QFont("Microsoft YaHei", 11))
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {self.NATURE_BLUE};
+                    color: #FFFFFF;
+                    padding: 8px 16px;
+                    border: none;
+                    border-radius: 6px;
+                    font-weight: bold;
+                }}
+                QPushButton:hover {{
+                    background-color: {self.NATURE_CYAN};
+                }}
+                QPushButton:disabled {{
+                    background-color: {self.BG_LIGHT};
+                    color: {self.TEXT_SECONDARY};
+                }}
+            """)
+            btn.setFixedSize(120, 40)
+
+        self.current_level_label = QLabel("第 1 关 / 共 7 关")
+        self.current_level_label.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        self.current_level_label.setAlignment(Qt.AlignCenter)
+        self.current_level_label.setStyleSheet(f"""
+            QLabel {{
+                color: {self.NATURE_BLUE};
+                padding: 5px;
+                font-weight: bold;
+            }}
+        """)
+
+        level_nav_layout.addWidget(self.prev_level_btn)
+        level_nav_layout.addStretch()
+        level_nav_layout.addWidget(self.current_level_label)
+        level_nav_layout.addStretch()
+        level_nav_layout.addWidget(self.next_level_btn)
+
+        course_layout.addWidget(level_nav_widget)
+
+        # 关卡进度指示器（7个圆圈）
+        progress_widget = QWidget()
+        progress_layout = QHBoxLayout(progress_widget)
+        progress_layout.setSpacing(8)
+        progress_layout.setContentsMargins(0, 5, 0, 5)
+
+        self.level_indicators = []
+        for i in range(7):
+            indicator = QLabel("○")
+            indicator.setFont(QFont("Microsoft YaHei", 14))
+            indicator.setAlignment(Qt.AlignCenter)
+            indicator.setFixedSize(35, 35)
+            indicator.setStyleSheet(f"""
+                QLabel {{
+                    background-color: {self.BG_MEDIUM};
+                    color: {self.TEXT_SECONDARY};
+                    border: 2px solid {self.BORDER_COLOR};
+                    border-radius: 17px;
+                }}
+            """)
+            self.level_indicators.append(indicator)
+            progress_layout.addWidget(indicator)
+
+        course_layout.addWidget(progress_widget)
+
+        # 关卡标题
+        self.level_title_label = QLabel("关卡标题")
+        self.level_title_label.setFont(QFont("Microsoft YaHei", 14, QFont.Bold))
+        self.level_title_label.setStyleSheet(f"""
+            QLabel {{
+                color: {self.NATURE_RED};
+                padding: 8px;
+                font-weight: bold;
+                border-left: 4px solid {self.NATURE_RED};
+            }}
+        """)
+        course_layout.addWidget(self.level_title_label)
+
+        # 代码编辑区域
+        code_area = QWidget()
+        code_layout = QVBoxLayout(code_area)
+        code_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.code_instruction = QLabel("题目说明")
+        self.code_instruction.setFont(QFont("Microsoft YaHei", 11))
+        self.code_instruction.setStyleSheet(f"""
+            QLabel {{
+                color: {self.TEXT_PRIMARY};
+                padding: 10px;
+                background-color: {self.BG_LIGHT};
+                border-radius: 6px;
+                border: 1px solid {self.BORDER_COLOR};
+            }}
+        """)
+        self.code_instruction.setWordWrap(True)
+        self.code_instruction.setMinimumHeight(60)
+
+        code_label = QLabel("代码编辑区")
+        code_label.setFont(QFont("Microsoft YaHei", 11, QFont.Bold))
+        code_label.setStyleSheet(f"""
+            QLabel {{
+                color: {self.NATURE_BLUE};
+                padding: 5px;
+                font-weight: bold;
+            }}
+        """)
+
+        self.code_edit = QTextEdit()
+        self.code_edit.setFont(QFont("Consolas", 11))
+        self.code_edit.setStyleSheet("""
+            QTextEdit {
+                background-color: #1a1a2e;
+                color: #FFFFFF;
+                border: 2px solid #3C5488;
+                border-radius: 6px;
+                padding: 10px;
+                selection-background-color: #4DBBD5;
+            }
+        """)
+
+        code_layout.addWidget(self.code_instruction)
+        code_layout.addWidget(code_label)
+        code_layout.addWidget(self.code_edit)
+
+        # 运行和提交按钮
+        btn_layout = QHBoxLayout()
+        self.run_btn = QPushButton("▶ 运行代码")
+        self.submit_btn = QPushButton("✓ 提交答案")
+
+        self.run_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.NATURE_GREEN};
+                color: #FFFFFF;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 6px;
+                font-weight: bold;
+                font-size: 13px;
+            }}
+            QPushButton:hover {{
+                background-color: #00C4A7;
+            }}
+        """)
+
+        self.submit_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.NATURE_ORANGE};
+                color: #FFFFFF;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 6px;
+                font-weight: bold;
+                font-size: 13px;
+            }}
+            QPushButton:hover {{
+                background-color: #E4A07B;
+            }}
+        """)
+
+        btn_layout.addWidget(self.run_btn)
+        btn_layout.addWidget(self.submit_btn)
+        btn_layout.addStretch()
+        code_layout.addLayout(btn_layout)
+
+        # 运行结果输出区域
+        output_area = QWidget()
+        output_layout = QVBoxLayout(output_area)
+        output_layout.setContentsMargins(0, 0, 0, 0)
+
+        output_label = QLabel("运行结果 / 控制台")
+        output_label.setFont(QFont("Microsoft YaHei", 11, QFont.Bold))
+        output_label.setStyleSheet(f"""
+            QLabel {{
+                color: {self.NATURE_ORANGE};
+                padding: 5px;
+                font-weight: bold;
+            }}
+        """)
+
+        self.output_edit = QTextEdit()
+        self.output_edit.setFont(QFont("Consolas", 10))
+        self.output_edit.setStyleSheet("""
+            QTextEdit {
+                background-color: #1a1a2e;
+                color: #00A087;
+                border: 2px solid #3C5488;
+                border-radius: 6px;
+                padding: 10px;
+            }
+        """)
+        self.output_edit.setReadOnly(True)
+        self.output_edit.setPlaceholderText("运行结果将显示在这里...")
+
+        output_layout.addWidget(output_label)
+        output_layout.addWidget(self.output_edit)
+
+        course_layout.addWidget(code_area, stretch=6)
+        course_layout.addWidget(output_area, stretch=4)
+
+        self.right_layout.addWidget(self.course_widget)
+
+    # ==================== 第十部分：打卡日历界面创建 ====================
+
+    def create_calendar_interface(self):
+        """创建打卡日历界面 - 包含日历、统计、货币显示等"""
+        self.calendar_widget = QWidget()
+        calendar_main_layout = QVBoxLayout(self.calendar_widget)
+        calendar_main_layout.setContentsMargins(10, 10, 10, 10)
+        calendar_main_layout.setSpacing(15)
+
+        # 顶部：返回按钮、标题、货币显示
+        top_layout = QHBoxLayout()
+        back_btn = QPushButton("← 返回课程")
+        back_btn.setFont(QFont("Microsoft YaHei", 12))
+        back_btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {self.NATURE_BLUE};
+                        color: #FFFFFF;
+                        padding: 8px 16px;
+                        border: none;
+                        border-radius: 6px;
+                        font-weight: bold;
+                    }}
+                    QPushButton:hover {{
+                        background-color: {self.NATURE_CYAN};
+                    }}
+                """)
+        back_btn.clicked.connect(lambda: self.switch_view('course'))
+        top_layout.addWidget(back_btn)
+
+        calendar_title = QLabel("📅 学习打卡日历")
+        calendar_title.setFont(QFont("Microsoft YaHei", 18, QFont.Bold))
+        calendar_title.setStyleSheet(f"""
+            QLabel {{
+                color: {self.NATURE_BLUE};
+                padding: 5px;
+                font-weight: bold;
+            }}
+        """)
+        top_layout.addWidget(calendar_title)
+
+        top_layout.addStretch()
+
+        currency_widget = QWidget()
+        currency_layout = QHBoxLayout(currency_widget)
+        currency_layout.setSpacing(15)
+        currency_layout.setContentsMargins(10, 5, 10, 5)
+
+        self.gold_label = QLabel(f"💰 金币: {self.currency_data['gold']}")
+        self.silver_label = QLabel(f"🥈 银币: {self.currency_data['silver']}")
+        self.copper_label = QLabel(f"🥉 铜币: {self.currency_data['copper']}")
+
+        for label in [self.gold_label, self.silver_label, self.copper_label]:
+            label.setStyleSheet(f"""
+                QLabel {{
+                    background-color: {self.NATURE_BLUE};
+                    color: #FFFFFF;
+                    padding: 12px 18px;
+                    border-radius: 6px;
+                    font-size: 15px;
+                    font-weight: bold;
+                    border: 2px solid {self.NATURE_PURPLE};
+                }}
+            """)
+            currency_layout.addWidget(label)
+
+        top_layout.addWidget(currency_widget)
+        calendar_main_layout.addLayout(top_layout)
+
+        # 打卡统计信息
+        stats_widget = QWidget()
+        stats_layout = QHBoxLayout(stats_widget)
+        stats_layout.setSpacing(20)
+
+        self.total_days_label = QLabel("总打卡天数: 0")
+        self.continuous_days_label = QLabel("最长连续: 0 天")
+        self.current_streak_label = QLabel("当前连续: 0 天")
+
+        for label in [self.total_days_label, self.continuous_days_label, self.current_streak_label]:
+            label.setFont(QFont("Microsoft YaHei", 13))
+            label.setStyleSheet(f"""
+                QLabel {{
+                    background-color: {self.BG_MEDIUM};
+                    color: {self.NATURE_GREEN};
+                    padding: 12px 18px;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    border: 2px solid {self.NATURE_GREEN};
+                }}
+            """)
+            stats_layout.addWidget(label)
+
+        stats_layout.addStretch()
+        calendar_main_layout.addWidget(stats_widget)
+
+        # 查看学习计划按钮
+        plan_btn = QPushButton("📋 查看今日智能学习计划")
+        plan_btn.setFont(QFont("Microsoft YaHei", 14))
+        plan_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.NATURE_RED};
+                color: #FFFFFF;
+                padding: 14px 24px;
+                border: none;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: #D47A74;
+            }}
+        """)
+        plan_btn.clicked.connect(self.show_study_plan)
+        calendar_main_layout.addWidget(plan_btn)
+
+        mid_layout = QHBoxLayout()
+        mid_layout.setSpacing(20)
+
+        # 日历网格区域
+        calendar_group = QWidget()
+        calendar_group_layout = QVBoxLayout(calendar_group)
+
+        month_nav = QHBoxLayout()
+        self.prev_month_btn = QPushButton("◀")
+        self.next_month_btn = QPushButton("▶")
+        self.current_month_label = QLabel("")
+        self.current_month_label.setAlignment(Qt.AlignCenter)
+        self.current_month_label.setFont(QFont("Microsoft YaHei", 14, QFont.Bold))
+        self.current_month_label.setStyleSheet(f"color: {self.NATURE_BLUE}; padding: 5px; font-weight: bold;")
+
+        for btn in [self.prev_month_btn, self.next_month_btn]:
+            btn.setFont(QFont("Microsoft YaHei", 12))
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {self.NATURE_BLUE};
+                    color: #FFFFFF;
+                    padding: 10px 18px;
+                    border: none;
+                    border-radius: 4px;
+                }}
+                QPushButton:hover {{
+                    background-color: {self.NATURE_CYAN};
+                }}
+            """)
+            btn.setFixedSize(50, 36)
+
+        self.prev_month_btn.clicked.connect(self.prev_month)
+        self.next_month_btn.clicked.connect(self.next_month)
+
+        month_nav.addWidget(self.prev_month_btn)
+        month_nav.addWidget(self.current_month_label)
+        month_nav.addWidget(self.next_month_btn)
+        calendar_group_layout.addLayout(month_nav)
+
+        self.calendar_grid = QGridLayout()
+        self.calendar_grid.setSpacing(8)
+        calendar_group_layout.addLayout(self.calendar_grid)
+
+        calendar_main_layout.addWidget(calendar_group, stretch=1)
+
+        # 右侧打卡操作面板
+        checkin_group = QWidget()
+        checkin_group.setMaximumWidth(280)
+        checkin_layout = QVBoxLayout(checkin_group)
+        checkin_layout.setSpacing(15)
+
+        self.today_info_label = QLabel("")
+        self.today_info_label.setFont(QFont("Microsoft YaHei", 12))
+        self.today_info_label.setAlignment(Qt.AlignCenter)
+        self.today_info_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {self.BG_MEDIUM};
+                color: {self.TEXT_PRIMARY};
+                padding: 18px;
+                border-radius: 6px;
+                border: 2px solid {self.NATURE_PURPLE};
+            }}
+        """)
+        checkin_layout.addWidget(self.today_info_label)
+
+        self.checkin_btn = QPushButton("✅ 今日打卡")
+        self.checkin_btn.setFont(QFont("Microsoft YaHei", 15))
+        self.checkin_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.NATURE_GREEN};
+                color: #FFFFFF;
+                padding: 18px;
+                border: none;
+                border-radius: 6px;
+                font-size: 15px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: #00C4A7;
+            }}
+            QPushButton:disabled {{
+                background-color: {self.BG_LIGHT};
+                color: {self.TEXT_SECONDARY};
+            }}
+        """)
+        checkin_layout.addWidget(self.checkin_btn)
+
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Sunken)
+        line.setStyleSheet(f"background-color: {self.NATURE_PURPLE};")
+        checkin_layout.addWidget(line)
+
+        clear_title = QLabel("🗑️ 清除打卡记录")
+        clear_title.setFont(QFont("Microsoft YaHei", 13, QFont.Bold))
+        clear_title.setStyleSheet(f"color: {self.NATURE_RED}; padding: 5px; font-weight: bold;")
+        checkin_layout.addWidget(clear_title)
+
+        clear_day_btn = QPushButton("🗑️ 清除选中日期")
+        clear_day_btn.setFont(QFont("Microsoft YaHei", 12))
+        clear_day_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.NATURE_RED};
+                color: #FFFFFF;
+                padding: 12px;
+                border: none;
+                border-radius: 6px;
+                font-size: 12px;
+            }}
+            QPushButton:hover {{
+                background-color: #D47A74;
+            }}
+        """)
+        clear_day_btn.clicked.connect(self.clear_selected_day)
+        checkin_layout.addWidget(clear_day_btn)
+
+        clear_week_btn = QPushButton("🗑️ 清除最近一周 (+1银币)")
+        clear_week_btn.setFont(QFont("Microsoft YaHei", 12))
+        clear_week_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.NATURE_ORANGE};
+                color: #FFFFFF;
+                padding: 12px;
+                border: none;
+                border-radius: 6px;
+                font-size: 12px;
+            }}
+            QPushButton:hover {{
+                background-color: #E4A07B;
+            }}
+        """)
+        clear_week_btn.clicked.connect(self.clear_last_week)
+        checkin_layout.addWidget(clear_week_btn)
+
+        clear_month_btn = QPushButton("🗑️ 清除最近一月 (+1金币)")
+        clear_month_btn.setFont(QFont("Microsoft YaHei", 12))
+        clear_month_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.NATURE_PURPLE};
+                color: #FFFFFF;
+                padding: 12px;
+                border: none;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: #A4B0D4;
+            }}
+        """)
+        clear_month_btn.clicked.connect(self.clear_last_month)
+        checkin_layout.addWidget(clear_month_btn)
+
+        checkin_layout.addStretch()
+
+        mid_layout.addWidget(calendar_group, stretch=1)
+        mid_layout.addWidget(checkin_group)
+
+        calendar_main_layout.addLayout(mid_layout)
+
+        # 最近学习记录列表
+        record_title = QLabel("📝 最近学习记录")
+        record_title.setFont(QFont("Microsoft YaHei", 14, QFont.Bold))
+        record_title.setStyleSheet(f"color: {self.NATURE_BLUE}; padding: 5px 0; font-weight: bold;")
+        calendar_main_layout.addWidget(record_title)
+
+        self.record_list = QListWidget()
+        self.record_list.setFont(QFont("Microsoft YaHei", 11))
+        self.record_list.setStyleSheet(f"""
+            QListWidget {{
+                background-color: {self.BG_MEDIUM};
+                border: 2px solid {self.NATURE_BLUE};
+                border-radius: 6px;
+                padding: 5px;
+                color: {self.TEXT_PRIMARY};
+            }}
+            QListWidget::item {{
+                padding: 10px;
+                border-bottom: 1px solid {self.BORDER_COLOR};
+            }}
+        """)
+        calendar_main_layout.addWidget(self.record_list)
+
+        self.right_layout.addWidget(self.calendar_widget)
+
+    # ==================== 第十一部分：视图切换和数据更新 ====================
+
+    def update_course_list_display(self):
+        """更新课程列表显示，为已完成的课程添加绿色对勾标记"""
+        for i in range(self.course_list.count()):
+            item = self.course_list.item(i)
+            course_name = item.text()
+
+            # 移除旧的完成标记
+            if " ✓" in course_name:
+                course_name = course_name.replace(" ✓", "")
+
+            # 如果课程已完成，添加绿色对勾
+            if self.is_course_completed(course_name):
+                item.setText(course_name + " ✓")
+                item.setForeground(QColor(self.NATURE_GREEN))
+            else:
+                item.setText(course_name)
+                item.setForeground(QColor(self.TEXT_PRIMARY))
+
+    def switch_view(self, view_type):
+        """
+        切换视图模式
+        参数：
+            view_type: 'course'显示课程界面，'calendar'显示日历界面
+        """
+        if view_type == 'course':
+            self.left_widget.setVisible(True)
+            self.course_widget.setVisible(True)
+            self.calendar_widget.setVisible(False)
+            self.btn_course.setChecked(True)
+            self.btn_calendar.setChecked(False)
+        else:
+            self.left_widget.setVisible(False)
+            self.course_widget.setVisible(False)
+            self.calendar_widget.setVisible(True)
+            self.btn_course.setChecked(False)
+            self.btn_calendar.setChecked(True)
+            self.update_calendar()
+            self.update_checkin_stats()
+
+    # ==================== 第十二部分：日历功能方法 ====================
+
+    def update_calendar(self):
+        """更新日历显示 - 渲染当月所有日期，标记打卡状态"""
+        year = self._current_year
+        month = self._current_month
+
+        self.current_month_label.setText(f"{year}年{month}月")
+
+        first_day = date(year, month, 1)
+        first_weekday = first_day.weekday()
+
+        if month == 12:
+            next_month = date(year + 1, 1, 1)
+        else:
+            next_month = date(year, month + 1, 1)
+        days_in_month = (next_month - first_day).days
+
+        # 清空网格中的所有控件
+        while self.calendar_grid.count():
+            item = self.calendar_grid.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        # 添加星期标题（第0行）
+        week_days = ["一", "二", "三", "四", "五", "六", "日"]
+        for i, day_name in enumerate(week_days):
+            label = QLabel(day_name)
+            label.setAlignment(Qt.AlignCenter)
+            label.setFont(QFont("Microsoft YaHei", 13, QFont.Bold))
+            label.setStyleSheet(f"""
+                QLabel {{
+                    color: {self.NATURE_BLUE};
+                    font-weight: bold;
+                    padding: 8px;
+                    font-size: 13px;
+                }}
+            """)
+            self.calendar_grid.addWidget(label, 0, i)
+
+        # 填充日期（从第1行开始）
+        day = 1
+        for row_idx in range(1, 7):
+            for col_idx in range(7):
+                if row_idx == 1 and col_idx < first_weekday:
+                    continue
+                if day > days_in_month:
+                    break
+
+                date_str = f"{year}-{month:02d}-{day:02d}"
+                is_checked_in = date_str in self.checkin_data
+                is_today = date(year, month, day) == date.today()
+
+                btn = QPushButton(str(day))
+                btn.setFont(QFont("Microsoft YaHei", 13))
+                btn.setFixedSize(60, 60)
+                btn.setProperty('is_day_button', True)
+                btn.setProperty('day', day)
+                btn.setProperty('year', year)
+                btn.setProperty('month', month)
+
+                if is_today:
+                    if is_checked_in:
+                        btn.setStyleSheet(f"""
+                            QPushButton {{
+                                background-color: {self.NATURE_GREEN};
+                                color: #FFFFFF;
+                                border: 3px solid {self.NATURE_CYAN};
+                                border-radius: 8px;
+                                font-size: 13px;
+                                font-weight: bold;
+                            }}
+                            QPushButton:hover {{
+                                background-color: #00C4A7;
+                            }}
+                        """)
+                    else:
+                        btn.setStyleSheet(f"""
+                            QPushButton {{
+                                background-color: {self.NATURE_RED};
+                                color: #FFFFFF;
+                                border: 3px solid {self.NATURE_ORANGE};
+                                border-radius: 8px;
+                                font-size: 13px;
+                                font-weight: bold;
+                            }}
+                            QPushButton:hover {{
+                                background-color: #D47A74;
+                            }}
+                        """)
+                elif is_checked_in:
+                    btn.setStyleSheet(f"""
+                        QPushButton {{
+                            background-color: {self.NATURE_GREEN};
+                            color: #FFFFFF;
+                            border: 2px solid {self.NATURE_CYAN};
+                            border-radius: 8px;
+                            font-size: 13px;
+                        }}
+                        QPushButton:hover {{
+                            background-color: #00C4A7;
+                        }}
+                    """)
+                else:
+                    btn.setStyleSheet(f"""
+                        QPushButton {{
+                            background-color: {self.BG_MEDIUM};
+                            color: {self.TEXT_PRIMARY};
+                            border: 1px solid {self.BORDER_COLOR};
+                            border-radius: 8px;
+                            font-size: 13px;
+                        }}
+                        QPushButton:hover {{
+                            background-color: {self.BG_LIGHT};
+                            border: 2px solid {self.NATURE_CYAN};
+                        }}
+                    """)
+
+                btn.clicked.connect(self.on_day_button_clicked)
+                self.calendar_grid.addWidget(btn, row_idx, col_idx)
+
+                day += 1
+
+            if day > days_in_month:
+                break
+
+    def prev_month(self):
+        """切换到上一个月"""
+        if self._current_month == 1:
+            self._current_year -= 1
+            self._current_month = 12
+        else:
+            self._current_month -= 1
+        self.update_calendar()
+
+    def next_month(self):
+        """切换到下一个月"""
+        if self._current_month == 12:
+            self._current_year += 1
+            self._current_month = 1
+        else:
+            self._current_month += 1
+        self.update_calendar()
+
+    def on_day_button_clicked(self):
+        """当用户点击日历中的某一天时触发 - 显示打卡信息"""
+        btn = self.sender()
+        day = btn.property('day')
+        year = btn.property('year')
+        month = btn.property('month')
+        selected_date = date(year, month, day)
+        date_str = selected_date.strftime("%Y-%m-%d")
+
+        if date_str in self.checkin_data:
+            checkin_time = self.checkin_data[date_str]["time"]
+            QMessageBox.information(self, "打卡信息", f"✅ {date_str} 打卡成功！\n打卡时间: {checkin_time}")
+        else:
+            QMessageBox.information(self, "打卡信息", f"📍 {date_str} 尚未打卡")
+
+    def show_study_plan(self):
+        """显示今日智能学习计划 - 从后端数据库获取个性化计划"""
+        from houtai_test import get_private_custom_study_plan
+        plan_text = get_private_custom_study_plan(self.current_user_id)
+
+        msg_box = QMessageBox()
+        msg_box.setWindowTitle("今日智能学习计划")
+        msg_box.setText(plan_text)
+        msg_box.setFont(QFont("Microsoft YaHei", 10))
+        msg_box.setStyleSheet("""
+            QMessageBox {
+                background-color: white;
+            }
+            QLabel {
+                color: #1a3a52;
+            }
+        """)
+        msg_box.exec_()
+
+    def update_currency_display(self):
+        """更新货币显示标签"""
+        self.gold_label.setText(f"💰 金币: {self.currency_data['gold']}")
+        self.silver_label.setText(f"🥈 银币: {self.currency_data['silver']}")
+        self.copper_label.setText(f"🥉 铜币: {self.currency_data['copper']}")
+
+    def get_selected_calendar_date(self):
+        """获取日历中选中的日期（通过焦点判断）"""
+        for i in range(self.calendar_grid.count()):
+            item = self.calendar_grid.itemAt(i)
+            if item:
+                widget = item.widget()
+                if isinstance(widget, QPushButton) and widget.property('is_day_button'):
+                    if widget.isDown() or widget.hasFocus():
+                        day = widget.property('day')
+                        year = widget.property('year')
+                        month = widget.property('month')
+                        if day and year and month:
+                            return date(year, month, day)
+        return None
+
+    # ==================== 第十三部分：打卡记录清除方法 ====================
+
+    def clear_selected_day(self):
+        """清除选中的日期打卡记录"""
+        selected_date = self.get_selected_calendar_date()
+        if not selected_date:
+            QMessageBox.warning(self, "提示", "请先在日历中选择一个日期（点击日期按钮）！")
+            return
+
+        date_str = selected_date.strftime("%Y-%m-%d")
+        if date_str not in self.checkin_data:
+            QMessageBox.information(self, "提示", "该日期没有打卡记录！")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            '确认清除',
+            f'确定要清除 {date_str} 的打卡记录吗？\n\n奖励: 💰 10 铜币',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            if self.remove_checkin_record(date_str):
+                QMessageBox.information(self, "成功", f"已清除 {date_str} 的打卡记录！\n获得奖励: 💰 10 铜币")
+                self.update_calendar()
+                self.update_checkin_stats()
+                self.update_today_info()
+
+    def clear_last_week(self):
+        """清除最近一周的打卡记录"""
+        today = date.today()
+        week_ago = today - timedelta(days=6)
+
+        delete_count = 0
+        for i in range(7):
+            check_date = today - timedelta(days=i)
+            date_str = check_date.strftime("%Y-%m-%d")
+            if date_str in self.checkin_data:
+                delete_count += 1
+
+        if delete_count == 0:
+            QMessageBox.information(self, "提示", "最近一周没有打卡记录！")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            '确认清除',
+            f'确定要清除最近一周 ({week_ago.strftime("%m-%d")} ~ {today.strftime("%m-%d")}) 的打卡记录吗？\n共 {delete_count} 天有打卡记录\n\n奖励: 🥈 1 银币 (=100铜币)',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            deleted = self.remove_week_checkins()
+            QMessageBox.information(self, "成功", f"已清除最近一周的 {deleted} 天打卡记录！\n获得奖励: 🥈 1 银币")
+            self.update_calendar()
+            self.update_checkin_stats()
+            self.update_today_info()
+
+    def clear_last_month(self):
+        """清除最近一个月的打卡记录"""
+        today = date.today()
+        month_ago = today - timedelta(days=29)
+
+        delete_count = 0
+        for i in range(30):
+            check_date = today - timedelta(days=i)
+            date_str = check_date.strftime("%Y-%m-%d")
+            if date_str in self.checkin_data:
+                delete_count += 1
+
+        if delete_count == 0:
+            QMessageBox.information(self, "提示", "最近一个月没有打卡记录！")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            '确认清除',
+            f'确定要清除最近一个月 ({month_ago.strftime("%m-%d")} ~ {today.strftime("%m-%d")}) 的打卡记录吗？\n共 {delete_count} 天有打卡记录\n\n奖励: 💰 1 金币 (=1000铜币)',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            deleted = self.remove_month_checkins()
+            QMessageBox.information(self, "成功", f"已清除最近一个月的 {deleted} 天打卡记录！\n获得奖励: 💰 1 金币")
+            self.update_calendar()
+            self.update_checkin_stats()
+            self.update_today_info()
+
+    # ==================== 第十四部分：打卡执行和统计方法 ====================
+
+    def do_checkin(self):
+        """执行今日打卡操作"""
+        today_str = date.today().strftime("%Y-%m-%d")
+
+        now = datetime.now()
+        self.checkin_data[today_str] = {
+            "date": today_str,
+            "time": now.strftime("%H:%M:%S"),
+            "timestamp": now.timestamp()
+        }
+
+        self.save_checkin_data()
+
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.setWindowTitle("打卡成功")
+        msg_box.setText(f"✅ {today_str} 打卡成功！\n继续加油！")
+        msg_box.exec_()
+
+        self.update_calendar()
+        self.update_checkin_stats()
+        self.update_today_info()
+
+    def update_checkin_stats(self):
+        """更新打卡统计信息 - 总天数、最长连续、当前连续"""
+        if not self.checkin_data:
+            self.total_days_label.setText("总打卡天数: 0")
+            self.continuous_days_label.setText("最长连续: 0 天")
+            self.current_streak_label.setText("当前连续: 0 天")
+            self.update_today_info()
+            return
+
+        total_days = len(self.checkin_data)
+        self.total_days_label.setText(f"总打卡天数: {total_days}")
+
+        dates = sorted([datetime.strptime(d, "%Y-%m-%d").date() for d in self.checkin_data.keys()])
+
+        current_streak = 0
+        today = date.today()
+        check_date = today
+
+        while check_date.strftime("%Y-%m-%d") in self.checkin_data:
+            current_streak += 1
+            check_date -= timedelta(days=1)
+
+        self.current_streak_label.setText(f"当前连续: {current_streak} 天")
+
+        max_streak = 0
+        temp_streak = 1
+
+        for i in range(1, len(dates)):
+            if (dates[i] - dates[i - 1]).days == 1:
+                temp_streak += 1
+                max_streak = max(max_streak, temp_streak)
+            else:
+                temp_streak = 1
+
+        if len(dates) > 0:
+            max_streak = max(max_streak, 1)
+
+        self.continuous_days_label.setText(f"最长连续: {max_streak} 天")
+
+        self.update_today_info()
+
+    def update_today_info(self):
+        """更新今日打卡信息显示"""
+        today_str = date.today().strftime("%Y-%m-%d")
+
+        if today_str in self.checkin_data:
+            checkin_time = self.checkin_data[today_str]["time"]
+            self.today_info_label.setText(f"✅ 今日已打卡\n打卡时间: {checkin_time}")
+            self.checkin_btn.setEnabled(True)
+            self.checkin_btn.setText("✅ 再次打卡")
+        else:
+            self.today_info_label.setText(f"📍 今日还未打卡\n点击按钮完成打卡")
+            self.checkin_btn.setEnabled(True)
+            self.checkin_btn.setText("✅ 今日打卡")
+
+    # ==================== 第十五部分：关卡内容管理方法 ====================
+
+    def get_level_content(self, course_name, level_num):
+        """
+        获取指定课程的关卡内容
+        参数：
+            course_name: 课程名称
+            level_num: 关卡编号（1-7）
+        返回：包含标题、说明、代码、类型的字典
+        """
+        # 这里定义每个课程的关卡内容
+        # 为了简洁，我只展示部分示例
+        contents = {
+            "Python 基础语法": {
+                1: {
+                    "title": "第1关：代码介绍 - Print函数",
+                    "instruction": "学习使用print()函数输出内容。print()是Python中最基本的输出函数。",
+                    "code": '# 使用print()函数输出内容\nprint("Hello, Python!")\nprint("欢迎来到编程世界")',
+                    "type": "intro"
+                },
+                2: {
+                    "title": "第2关：实战填空 - 输出姓名",
+                    "instruction": "请在空白处填入正确的代码，使程序能够输出你的姓名。",
+                    "code": '# 请在下面填入代码，输出你的姓名\n__________("我的姓名是：张三")',
+                    "type": "fill",
+                    "answer": "print"
+                },
+                3: {
+                    "title": "第3关：实战填空 - 多行输出",
+                    "instruction": "使用两个print语句，分别输出两行文字。",
+                    "code": '# 输出第一行\nprint("第一行内容")\n# 输出第二行\n__________("第二行内容")',
+                    "type": "fill",
+                    "answer": "print"
+                },
+                4: {
+                    "title": "第4关：实战填空 - 输出数字",
+                    "instruction": "使用print输出数字100。",
+                    "code": '# 输出数字100\nprint(____)',
+                    "type": "fill",
+                    "answer": "100"
+                },
+                5: {
+                    "title": "第5关：实战填空 - 输出表达式",
+                    "instruction": "使用print输出10+20的结果。",
+                    "code": '# 输出10+20的结果\nprint(10 ____ 20)',
+                    "type": "fill",
+                    "answer": "+"
+                },
+                6: {
+                    "title": "第6关：程序实战 - 个人信息卡片",
+                    "instruction": "编写程序，输出一个包含姓名、年龄、城市的个人信息卡片。",
+                    "code": '# 编写程序输出个人信息\n# 要求输出格式：\n# ========== \n# 姓名：张三\n# 年龄：20\n# 城市：北京\n# ==========\n\nprint("=" * 10)\nprint("姓名：张三")\nprint("年龄：20")\nprint("城市：北京")\nprint("=" * 10)',
+                    "type": "practice"
+                },
+                7: {
+                    "title": "第7关：程序实战 - 欢迎消息",
+                    "instruction": "编写程序，输出一个欢迎消息，包含装饰线条。",
+                    "code": '# 编写欢迎消息程序\n# 输出效果：\n# **************************\n#   欢迎来到Python学习！\n# **************************\n\nprint("*" * 26)\nprint("  欢迎来到Python学习！")\nprint("*" * 26)',
+                    "type": "practice"
+                }
+            }
+        }
+
+        # 如果没有定义具体内容，返回默认内容
+        if course_name not in contents:
+            return {
+                "title": f"第{level_num}关：{self.level_types[level_num - 1]}",
+                "instruction": f"这是{course_name}的{self.level_types[level_num - 1]}关卡内容。",
+                "code": f'# {course_name} - {self.level_types[level_num - 1]}\n# 请在此编写代码\nprint("Hello")',
+                "type": "intro" if level_num == 1 else ("fill" if level_num <= 5 else "practice")
+            }
+
+        return contents[course_name].get(level_num, {
+            "title": f"第{level_num}关",
+            "instruction": "关卡内容加载中...",
+            "code": "# 请编写代码",
+            "type": "intro"
+        })
+
+    def on_course_selected(self, item):
+        """当用户选择课程时触发 - 加载第一关内容"""
+        course_name = item.text()
+
+        # 移除完成标记
+        if " ✓" in course_name:
+            course_name = course_name.replace(" ✓", "")
+
+        self.current_course = course_name
+        self.current_level = 1
+
+        # 加载第一关内容
+        self.load_level()
+
+        self.output_edit.setText(f"📖 已选择课程: {course_name}\n\n开始你的学习之旅吧！共有7个关卡等待你挑战。")
+
+    def load_level(self):
+        """加载当前关卡的内容到界面"""
+        if not self.current_course:
+            return
+
+        content = self.get_level_content(self.current_course, self.current_level)
+
+        # 更新关卡标题
+        self.level_title_label.setText(content["title"])
+
+        # 更新题目说明
+        self.code_instruction.setText(content["instruction"])
+
+        # 更新代码编辑器
+        self.code_edit.setText(content["code"])
+
+        # 更新关卡指示器
+        self.update_level_indicators()
+
+        # 更新关卡标签
+        self.current_level_label.setText(f"第 {self.current_level} 关 / 共 7 关")
+
+        # 更新按钮状态
+        self.prev_level_btn.setEnabled(self.current_level > 1)
+        self.next_level_btn.setEnabled(self.current_level < 7)
+
+        # 清空输出
+        self.output_edit.clear()
+
+    def update_level_indicators(self):
+        """更新关卡进度指示器 - 显示已完成、当前、未解锁状态"""
+        for i in range(7):
+            indicator = self.level_indicators[i]
+            level_num = i + 1
+
+            if self.is_level_completed(self.current_course, level_num):
+                # 已完成 - 绿色对勾
+                indicator.setText("✓")
+                indicator.setStyleSheet(f"""
+                    QLabel {{
+                        background-color: {self.NATURE_GREEN};
+                        color: #FFFFFF;
+                        border: 2px solid {self.NATURE_CYAN};
+                        border-radius: 17px;
+                        font-weight: bold;
+                    }}
+                """)
+            elif level_num == self.current_level:
+                # 当前关卡 - 红色高亮
+                indicator.setText(str(level_num))
+                indicator.setStyleSheet(f"""
+                    QLabel {{
+                        background-color: {self.NATURE_RED};
+                        color: #FFFFFF;
+                        border: 3px solid {self.NATURE_ORANGE};
+                        border-radius: 17px;
+                        font-weight: bold;
+                    }}
+                """)
+            else:
+                # 未解锁 - 灰色
+                indicator.setText(str(level_num))
+                indicator.setStyleSheet(f"""
+                    QLabel {{
+                        background-color: {self.BG_MEDIUM};
+                        color: {self.TEXT_SECONDARY};
+                        border: 2px solid {self.BORDER_COLOR};
+                        border-radius: 17px;
+                    }}
+                """)
+
+    # ==================== 第十六部分：答案提交和代码运行 ====================
+
+    def submit_answer(self):
+        """提交答案 - 验证填空题或确认实践题完成"""
+        if not self.current_course:
+            QMessageBox.warning(self, "提示", "请先选择一个课程！")
+            return
+
+        content = self.get_level_content(self.current_course, self.current_level)
+
+        if content["type"] == "fill":
+            # 填空题类型 - 验证答案
+            user_code = self.code_edit.toPlainText().strip()
+            expected_answer = content.get("answer", "")
+
+            if expected_answer and expected_answer in user_code:
+                self.complete_level(self.current_course, self.current_level)
+
+                msg_box = QMessageBox()
+                msg_box.setIcon(QMessageBox.Information)
+                msg_box.setWindowTitle("恭喜！")
+                msg_box.setText(f"✅ 答案正确！\n\n获得奖励：💰 5 铜币")
+                msg_box.exec_()
+
+                self.update_level_indicators()
+                self.update_course_list_display()
+
+                if self.current_level < 7:
+                    reply = QMessageBox.question(
+                        self,
+                        '继续学习',
+                        '是否进入下一关？',
+                        QMessageBox.Yes | QMessageBox.No,
+                        QMessageBox.Yes
+                    )
+                    if reply == QMessageBox.Yes:
+                        self.next_level()
+            else:
+                # 答案错误，记录到错题本
+                from houtai_test import auto_save_wrong_item
+                auto_save_wrong_item(
+                    self.current_user_id,
+                    content.get("title", ""),
+                    user_code,
+                    self.current_course.split()[0],
+                    content.get("title", "")
+                )
+                QMessageBox.warning(self, "答案错误", "❌ 答案不正确，已记录到错题本！\n提示：仔细观察需要填空的位置。")
+        else:
+            # 实践题类型 - 先运行代码再确认完成
+            self.run_code()
+
+            reply = QMessageBox.question(
+                self,
+                '确认完成',
+                '是否确认完成此关卡？（确保代码已正确编写并运行）',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+
+            if reply == QMessageBox.Yes:
+                self.complete_level(self.current_course, self.current_level)
+
+                msg_box = QMessageBox()
+                msg_box.setIcon(QMessageBox.Information)
+                msg_box.setWindowTitle("恭喜！")
+                msg_box.setText(f"✅ 关卡完成！\n\n获得奖励：💰 5 铜币")
+                msg_box.exec_()
+
+                self.update_level_indicators()
+                self.update_course_list_display()
+
+                if self.is_course_completed(self.current_course):
+                    QMessageBox.information(
+                        self,
+                        "课程完成！",
+                        f"🎉 恭喜你完成了《{self.current_course}》的所有关卡！\n\n获得额外奖励：💰 50 铜币"
+                    )
+                    self.add_copper(50)
+
+                if self.current_level < 7:
+                    reply = QMessageBox.question(
+                        self,
+                        '继续学习',
+                        '是否进入下一关？',
+                        QMessageBox.Yes | QMessageBox.No,
+                        QMessageBox.Yes
+                    )
+                    if reply == QMessageBox.Yes:
+                        self.next_level()
+
+    def next_level(self):
+        """切换到下一关"""
+        if self.current_level < 7:
+            self.current_level += 1
+            self.load_level()
+
+    def prev_level(self):
+        """切换到上一关"""
+        if self.current_level > 1:
+            self.current_level -= 1
+            self.load_level()
+
+    def run_code(self):
+        """运行Python代码 - 使用exec执行并捕获输出"""
+        code = self.code_edit.toPlainText()
+        self.output_edit.clear()
+
+        if not code.strip():
+            self.output_edit.setText("⚠️ 警告: 代码为空，请输入代码后再运行。")
+            return
+
+        try:
+            local_namespace = {}
+            import io
+            from contextlib import redirect_stdout
+
+            f = io.StringIO()
+            with redirect_stdout(f):
+                exec(code, {}, local_namespace)
+
+            out = f.getvalue()
+
+            if out:
+                self.output_edit.setText(f"✅ 运行成功:\n{out}")
+            else:
+                self.output_edit.setText("✅ 运行成功 (无输出)")
+
+        except SyntaxError as e:
+            self.output_edit.setText(f"❌ 语法错误:\n{str(e)}")
+        except NameError as e:
+            self.output_edit.setText(f"❌ 名称错误:\n{str(e)}")
+        except TypeError as e:
+            self.output_edit.setText(f"❌ 类型错误:\n{str(e)}")
+        except Exception as e:
+            self.output_edit.setText(f"❌ 运行时错误:\n{type(e).__name__}: {str(e)}")
+
+    # ==================== 第十七部分：账号管理和窗口关闭 ====================
+
+    def switch_account(self):
+        """切换账号 - 退出当前账号并重新登录"""
+        reply = QMessageBox.question(
+            self,
+            '切换账号',
+            '确定要退出当前账号并重新登录吗？',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            # 先保存当前数据
+            self.save_currency_data()
+            self.save_learning_progress()
+
+            # 创建新的登录对话框
+            login_dialog = LoginDialog()
+            if login_dialog.exec_() == QDialog.Accepted:
+                user_id, username = login_dialog.get_user_info()
+
+                # 创建新的主窗口
+                new_window = CodeLearnWindow(user_id=user_id, username=username)
+                new_window.show()
+
+                # 设置标志位，关闭当前窗口时不触发确认对话框
+                self._ignore_close_confirm = True
+                self.close()
+
+    def closeEvent(self, event):
+        """窗口关闭事件"""
+        self.save_currency_data()
+        self.save_learning_progress()
+
+        # 如果是切换账号，直接关闭不显示确认对话框
+        if hasattr(self, '_ignore_close_confirm') and self._ignore_close_confirm:
+            event.accept()
+            return
+
+        reply = QMessageBox.question(
+            self,
+            '确认退出',
+            '确定要退出编程学习软件吗?',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            event.accept()
+        else:
+            event.ignore()
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    app.setStyle('Fusion')
+
+    login_dialog = LoginDialog()
+    if login_dialog.exec_() == QDialog.Accepted:
+        user_id, username = login_dialog.get_user_info()
+        window = CodeLearnWindow(user_id=user_id, username=username)
+        window.show()
+        sys.exit(app.exec_())
+    else:
+        sys.exit(0)
